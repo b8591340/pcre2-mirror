@@ -166,31 +166,28 @@ static SLJIT_INLINE void apple_update_wx_flags(sljit_s32 enable_exec)
 static SLJIT_INLINE void* alloc_chunk(sljit_uw size)
 {
 	void *retval;
-	int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
-	int flags = MAP_PRIVATE;
-	int fd = -1;
-
-#ifdef PROT_MAX
-	prot |= PROT_MAX(prot);
-#endif
+	const int prot = PROT_READ | PROT_WRITE | PROT_EXEC;
 
 #ifdef MAP_ANON
-	flags |= MAP_ANON | SLJIT_MAP_JIT;
+	int flags = MAP_PRIVATE | MAP_ANON | SLJIT_MAP_JIT;
+
+	retval = mmap(NULL, size, prot, flags, -1, 0);
 #else /* !MAP_ANON */
 	if (SLJIT_UNLIKELY((dev_zero < 0) && open_dev_zero()))
 		return NULL;
 
-	fd = dev_zero;
+	retval = mmap(NULL, size, prot, MAP_PRIVATE, dev_zero, 0);
 #endif /* MAP_ANON */
 
-	retval = mmap(NULL, size, prot, flags, fd, 0);
 	if (retval == MAP_FAILED)
 		return NULL;
 
-	if (mprotect(retval, size, PROT_READ | PROT_WRITE | PROT_EXEC) < 0) {
+#ifdef SLIJT_WX_OS_NEEDSCHEK
+	if (mprotect(retval, size, prot) < 0) {
 		munmap(retval, size);
 		return NULL;
 	}
+#endif
 
 	SLJIT_UPDATE_WX_FLAGS(retval, (uint8_t *)retval + size, 0);
 
